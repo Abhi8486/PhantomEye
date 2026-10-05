@@ -1,7 +1,7 @@
 import nest_asyncio
 import uvicorn
 from pyngrok import ngrok
-from backend.main import app
+from backend.app import app
 
 # This script is designed to run the FastAPI backend inside a Google Colab Notebook cell.
 # Colab runs an existing asyncio event loop, so we need nest_asyncio to allow uvicorn to run.
