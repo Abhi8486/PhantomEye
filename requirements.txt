@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+numpy
+opencv-python
+ultralytics
+torch
+torchvision
+easyocr
+requests
+google-generativeai
+pydantic
+transformers
+pillow
+einops
+timm

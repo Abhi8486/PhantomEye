@@ -1,0 +1,791 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Red EYE — Gujarat Unified AI CCTV Surveillance & Tactical Command Center</title>
+    
+    <!-- Google Fonts: Inter & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet GIS Map CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- HLS.js for Live Streams -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+    <!-- Custom Tactical CSS -->
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+
+    <!-- Global API Key Injection Script -->
+    <script>
+        const API_KEY = "DEV_POC_TOKEN";
+
+        const originalFetch = window.fetch;
+        window.fetch = async function(resource, config) {
+            if (typeof resource === 'string' && resource.startsWith('/api/')) {
+                config = config || {};
+                config.headers = config.headers || {};
+                config.headers['X-API-Key'] = API_KEY;
+            }
+            return originalFetch(resource, config);
+        };
+        
+        const OriginalWebSocket = window.WebSocket;
+        window.WebSocket = function(url, protocols) {
+            if (typeof url === 'string' && url.includes('/api/')) {
+                const separator = url.includes('?') ? '&' : '?';
+                url = url + separator + 'api_key=' + API_KEY;
+            }
+            return new OriginalWebSocket(url, protocols);
+        };
+    </script>
+</head>
+<body class="light-theme">
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TOP TACTICAL TELEMETRY HUD                                   -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <header class="top-hud">
+        <div class="hud-brand">
+            <div class="brand-badge" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(185, 28, 28, 0.3)); border-color: rgba(239, 68, 68, 0.5);">
+                <i class="fa-solid fa-eye radar-spin" style="color: #ef4444;"></i>
+            </div>
+            <div class="brand-text">
+                <h1><span style="color: #ef4444; font-weight: 900;">Red</span> EYE</h1>
+                <p>Gujarat State Police AI CCTV Surveillance & Tactical Command Center</p>
+            </div>
+        </div>
+
+        <div class="hud-stats">
+            <div class="stat-pill">
+                <span class="stat-lbl">CAMERAS (POC / TARGET)</span>
+                <span class="stat-val text-cyan" id="stat-cameras">50 / 80,000</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-lbl">CONNECTED DEPTS</span>
+                <span class="stat-val text-green" id="stat-depts">26 / 26</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-lbl">ANPR READS TODAY</span>
+                <span class="stat-val text-yellow" id="stat-anpr">1,482</span>
+            </div>
+            <div class="stat-pill">
+                <span class="stat-lbl">SYSTEM STATUS</span>
+                <span class="stat-val text-green"><i class="fa-solid fa-circle-dot pulse-green"></i> OPTIMAL</span>
+            </div>
+        </div>
+
+        <div class="hud-actions">
+            <button class="btn btn-theme-toggle" id="btn-theme-toggle" title="Toggle Light/Dark Theme">
+                <i class="fa-solid fa-moon"></i> <span id="theme-toggle-text">Dark Mode</span>
+            </button>
+            <button class="btn btn-alert-badge" id="btn-alert-feed">
+                <i class="fa-solid fa-bell"></i>
+                <span class="alert-count" id="pending-alert-badge">1</span>
+            </button>
+            <div class="clock-display" id="hud-clock">00:00:00 IST</div>
+        </div>
+    </header>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- MAIN NAVIGATION TABS                                         -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <nav class="tactical-nav">
+        <button class="nav-tab active" data-tab="tab-map">
+            <i class="fa-solid fa-map-location-dot"></i> 1. GIS Tactical Map
+        </button>
+        <button class="nav-tab" data-tab="tab-live">
+            <i class="fa-solid fa-video"></i> 2. Live Surveillance Wall
+        </button>
+        <button class="nav-tab" data-tab="tab-anpr">
+            <i class="fa-solid fa-car-rear"></i> 3. ANPR & VAHAN Search
+        </button>
+        <button class="nav-tab" data-tab="tab-trajectory">
+            <i class="fa-solid fa-route"></i> 4. Suspect Trajectory Tracking
+        </button>
+        <button class="nav-tab" data-tab="tab-vms">
+            <i class="fa-solid fa-network-wired"></i> 5. VMS Federation Matrix
+        </button>
+        <button class="nav-tab" data-tab="tab-analytics">
+            <i class="fa-solid fa-chart-pie"></i> 6. Blind-Spot Gap Analytics
+        </button>
+        <button class="nav-tab" data-tab="tab-anomalies">
+            <i class="fa-solid fa-shield-halved text-red"></i> 7. Real-Time Gemini Crime AI
+        </button>
+    </nav>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 1: GIS TACTICAL MAP                                      -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane active" id="tab-map">
+        <div class="gis-layout">
+            <!-- Left Sidebar Filter -->
+            <div class="gis-sidebar">
+                <div class="sidebar-header">
+                    <h3><i class="fa-solid fa-filter"></i> Camera Registry Filter</h3>
+                </div>
+                <div class="filter-group">
+                    <label>Filter by Department</label>
+                    <select id="filter-dept" class="form-input">
+                        <option value="">All 26 Departments</option>
+                        <!-- Populated dynamically -->
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Filter by City / District</label>
+                    <select id="filter-city" class="form-input">
+                        <option value="">All Gujarat Districts</option>
+                        <option value="Ahmedabad">Ahmedabad</option>
+                        <option value="Gandhinagar">Gandhinagar</option>
+                        <option value="Surat">Surat</option>
+                        <option value="Vadodara">Vadodara</option>
+                        <option value="Rajkot">Rajkot</option>
+                        <option value="Jamnagar">Jamnagar</option>
+                        <option value="Somnath">Somnath</option>
+                        <option value="Valsad">Valsad</option>
+                        <option value="Dahod">Dahod</option>
+                        <option value="Dwarka">Dwarka</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Map Overlays</label>
+                    <div class="checkbox-pill">
+                        <input type="checkbox" id="chk-cones" checked>
+                        <label for="chk-cones">Show FOV Coverage Cones</label>
+                    </div>
+                    <div class="checkbox-pill">
+                        <input type="checkbox" id="chk-heatmaps">
+                        <label for="chk-heatmaps">Show Traffic Density</label>
+                    </div>
+                    <hr style="border: 1px solid var(--border-color); margin: 10px 0;">
+                    <label>Bulk Actions</label>
+                    <div style="margin-top: 5px;">
+                        <input type="file" id="csv-upload-input" accept=".csv" style="display: none;">
+                        <button class="btn btn-sm btn-green" id="btn-upload-csv" style="width: 100%;"><i class="fa-solid fa-file-csv"></i> Upload Cameras CSV</button>
+                    </div>
+                </div>
+
+                <div class="camera-list-box">
+                    <h4>Registered Nodes (<span id="filtered-cam-count">50</span>)</h4>
+                    <div class="camera-scroll-list" id="camera-list-items">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Map Viewport -->
+            <div class="gis-viewport">
+                <div id="leaflet-map" class="map-container"></div>
+                
+                <!-- Floating Map HUD Overlay -->
+                <div class="map-floating-overlay">
+                    <div class="overlay-card">
+                        <span class="title">ACTIVE TARGET TRAJECTORY</span>
+                        <span class="value text-red" id="active-target-badge">GJ01AB1234 (Toyota Fortuner)</span>
+                        <p class="subtext">5 Cameras Traversed | Last seen at CAM-018</p>
+                        <button class="btn btn-sm btn-cyan" onclick="focusOnTrajectory('GJ01AB1234')">
+                            <i class="fa-solid fa-crosshairs"></i> Trace Route
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 2: LIVE SURVEILLANCE & ANPR MATRIX                       -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane" id="tab-live">
+        <div class="live-layout">
+            <div class="video-main-box">
+                <div class="video-header">
+                    <div class="video-title">
+                        <span class="cam-tag" id="live-cam-id">CAM-005</span>
+                        <h3 id="live-cam-title">Visat Teen Rasta CSITMS-31 (Gandhinagar Highway)</h3>
+                    </div>
+                    <div class="video-controls">
+                        <select id="select-cam-quick" class="cam-select-quick" title="Quick Select Surveillance Node">
+                        </select>
+                        <button class="btn btn-sm btn-cyan" id="btn-toggle-anpr-hud"><i class="fa-solid fa-rectangle-ad"></i> ANPR HUD: ON</button>
+                        <button class="btn btn-sm btn-purple" id="btn-vlm-scan"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Scene Scan</button>
+                        <button class="btn btn-sm btn-dark" id="btn-toggle-fit" title="Toggle aspect ratio: Fit vs Fill Screen"><i class="fa-solid fa-expand"></i> <span id="fit-btn-label">Fit Window</span></button>
+                        <button class="btn btn-sm btn-dark" id="btn-toggle-fullscreen" title="Fullscreen"><i class="fa-solid fa-maximize"></i> Fullscreen</button>
+                        <button class="btn btn-sm btn-dark" id="btn-gemini-key-modal" title="Configure Google Gemini 2.5 Flash API Key"><i class="fa-solid fa-key text-yellow"></i> Gemini</button>
+                    </div>
+                </div>
+                <div class="video-viewport">
+                    <!-- Stream Display Container -->
+                    <div class="stream-container" id="stream-display-box">
+                        <video id="live-stream-video" autoplay playsinline muted style="width: 100%; height: 100%; object-fit: contain; background: #000;"></video>
+                        <div class="tactical-hud-overlay">
+                            <div class="hud-top-left">
+                                <span class="badge badge-rec"><i class="fa-solid fa-circle pulse-red"></i> LIVE (1080p@25FPS)</span>
+                            </div>
+                            <div class="hud-bottom-right" id="live-threat-hud">
+                                <span class="tms-badge secure"><i class="fa-solid fa-shield-halved"></i> TMS: 10/100 (SECURE)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Live Detections & Florence-2 Output -->
+            <div class="live-sidebar">
+                <div class="sidebar-header">
+                    <h3><i class="fa-solid fa-bolt"></i> Real-Time Event Telemetry</h3>
+                </div>
+                
+                <div class="florence-box">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <h4 style="margin:0;"><i class="fa-solid fa-brain text-cyan"></i> Multimodal AI Scene Report</h4>
+                        <div style="display: flex; gap: 8px; align-items: center;">
+                            <span class="badge badge-outline" id="vlm-engine-badge" style="font-size:10px; padding:2px 8px;">Florence-2 GPU</span>
+                            <button id="btn-close-ai-scene" title="Clear and minimize report" style="background:transparent; border:none; color:#94a3b8; cursor:pointer; font-size:14px;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </div>
+                    <p class="florence-text" id="florence-output-text">
+                        Active 1080p surveillance feed. Click <strong>AI Scene Scan</strong> to run deep multimodal detection of vehicle makes/models, license plates, and subject attire.
+                    </p>
+                    <div id="vlm-structured-results" class="vlm-results-container" style="display: none; margin-top: 10px;">
+                        <!-- Injected dynamically: vehicle models, clothing, plates -->
+                    </div>
+                </div>
+
+                <div class="live-anpr-feed">
+                    <h4><i class="fa-solid fa-car"></i> Recent Vehicle ANPR Stream</h4>
+                    <div class="anpr-feed-scroll" id="live-anpr-items">
+                        <!-- Populated via WebSocket -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 3: UNIVERSAL MULTI-MODAL AI & PHOTO SEARCH               -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane" id="tab-anpr">
+        <div class="search-layout">
+            <!-- Multi-Modal Search Hub -->
+            <div class="universal-search-card">
+                <div class="search-mode-tabs">
+                    <button class="mode-pill active" data-mode="all"><i class="fa-solid fa-wand-magic-sparkles"></i> Universal Query</button>
+                    <button class="mode-pill" data-mode="vehicle"><i class="fa-solid fa-car"></i> 🚗 Vehicle Search</button>
+                    <button class="mode-pill" data-mode="person"><i class="fa-solid fa-person"></i> 👤 Person Search</button>
+                    <button class="mode-pill" data-mode="plate"><i class="fa-solid fa-id-card"></i> 📋 License Plate</button>
+                    <button class="mode-pill" data-mode="photo"><i class="fa-solid fa-camera"></i> 📸 Photo Upload</button>
+                </div>
+
+                <div class="search-row-unified">
+                    <div class="search-input-wrapper-lg">
+                        <i class="fa-solid fa-magnifying-glass search-icon-lg"></i>
+                        <input type="text" id="universal-search-input" placeholder="Enter vehicle plate (e.g. GJ01AB1234), description (White Fortuner), person attributes, or upload photo..." class="search-main-input-lg">
+                        <button class="btn-clear-search" id="btn-clear-search" title="Clear"><i class="fa-solid fa-xmark"></i></button>
+                    </div>
+                    <button class="btn btn-dark btn-voice-rec" id="btn-voice-command" title="Click or Press Space to speak police radio command">
+                        <i class="fa-solid fa-microphone text-cyan"></i> <span id="voice-btn-label">Voice AI</span>
+                    </button>
+                    <button class="btn btn-primary btn-search-exec" id="btn-run-universal-search">
+                        <i class="fa-solid fa-magnifying-glass-arrow-right"></i> Search 30 CCTVs
+                    </button>
+                    <button class="btn btn-search-exec" id="btn-stop-universal-search" style="display:none; background:linear-gradient(135deg, #ff1744, #d50000); border:none; color:#fff; gap:6px;">
+                        <i class="fa-solid fa-stop"></i> Stop Live Search
+                    </button>
+                </div>
+
+                <!-- Interactive Drag & Drop Photo Upload Dropzone -->
+                <div class="photo-dropzone-container" id="photo-dropzone-box" style="display:none;">
+                    <div class="dropzone-area" id="dropzone-area">
+                        <input type="file" id="file-photo-input" accept="image/*" style="display:none;">
+                        <div class="dropzone-content" id="dropzone-empty-state">
+                            <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
+                            <h4>Drag & Drop Vehicle or Suspect Photo Here</h4>
+                            <p>or <span class="dropzone-browse-link" id="link-browse-photo">browse from computer</span> (JPG, PNG, WebP up to 10MB)</p>
+                            <span class="dropzone-hint">AI will extract visual 512-d Re-ID embedding & search all active camera observations</span>
+                        </div>
+                        <div class="dropzone-preview" id="dropzone-preview-state" style="display:none;">
+                            <img id="photo-preview-img" src="" alt="Query Preview">
+                            <div class="preview-meta">
+                                <strong id="preview-filename">photo.jpg</strong>
+                                <span id="preview-filesize">240 KB</span>
+                                <div class="preview-actions">
+                                    <button class="btn btn-sm btn-cyan" id="btn-exec-photo-search"><i class="fa-solid fa-fingerprint"></i> Scan & Search CCTV Index</button>
+                                    <button class="btn btn-sm btn-dark" id="btn-remove-photo"><i class="fa-solid fa-trash"></i> Remove</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Query Suggestion Chips -->
+                <div class="quick-chips-row">
+                    <span class="chips-label"><i class="fa-solid fa-lightbulb text-yellow"></i> Quick Queries:</span>
+                    <button class="query-chip" data-query="GJ01AB1234"><i class="fa-solid fa-car-side text-red"></i> Suspect SUV: GJ01AB1234 (Wanted FIR #402)</button>
+                    <button class="query-chip" data-query="White Toyota Fortuner 7-Seater"><i class="fa-solid fa-car text-cyan"></i> White Toyota Fortuner</button>
+                    <button class="query-chip" data-query="Person wearing red shirt and black pants"><i class="fa-solid fa-person text-green"></i> Person in Red Shirt & Black Pants</button>
+                    <button class="query-chip" data-query="Black Mahindra Scorpio-N"><i class="fa-solid fa-truck-pickup text-yellow"></i> Black Scorpio-N</button>
+                </div>
+            </div>
+
+            <!-- Candidates Results Section -->
+            <div class="search-candidates-section" id="candidates-results-box">
+                <div class="candidates-header">
+                    <h3><i class="fa-solid fa-shield-halved text-cyan"></i> CCTV Search Matches & Rolling Buffer Evidence</h3>
+                    <div class="candidates-stats" id="candidates-stats-summary">
+                        <span class="badge badge-green" id="high-conf-count-badge">0 High Confidence (≥90%)</span>
+                        <span class="badge badge-dark" id="total-matches-badge">0 Total Observations</span>
+                    </div>
+                </div>
+
+                <!-- Dynamic High-Confidence Evidence Cards Container -->
+                <div class="evidence-cards-grid" id="evidence-cards-container">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- ANPR Historical Registry Table -->
+            <div class="search-results-box" style="margin-top: 24px;">
+                <div class="sidebar-header" style="padding-bottom: 8px;">
+                    <h3><i class="fa-solid fa-table-list"></i> Raw CCTV Observation Log & VAHAN Registry</h3>
+                </div>
+                <table class="tactical-table" id="anpr-results-table">
+                    <thead>
+                        <tr>
+                            <th>TIMESTAMP</th>
+                            <th>PLATE NUMBER</th>
+                            <th>VEHICLE MMCR</th>
+                            <th>REGISTERED OWNER</th>
+                            <th>CAMERA & CITY</th>
+                            <th>LEGAL STATUS</th>
+                            <th>ACTIONS</th>
+                        </tr>
+                    </thead>
+                    <tbody id="anpr-table-body">
+                        <!-- Populated dynamically -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 4: SUSPECT TRAJECTORY TRACKING                           -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane" id="tab-trajectory">
+        <div class="trajectory-layout">
+            <div class="trajectory-header">
+                <div class="target-card">
+                    <div class="target-avatar">
+                        <i class="fa-solid fa-car-side"></i>
+                    </div>
+                    <div class="target-meta">
+                        <h2 id="traj-plate-title">GJ01AB1234 — White Toyota Fortuner (7-Seater)</h2>
+                        <p id="traj-fir-title"><span class="badge badge-danger">eGujCop FIR #402/2026</span> Owner: Ramesh Patel | Crime Branch Gandhinagar</p>
+                    </div>
+                </div>
+                <div class="trajectory-controls">
+                    <button class="btn btn-primary" id="btn-generate-ai-brief"><i class="fa-solid fa-wand-magic-sparkles"></i> AI Tactical Brief (Gemini 2.5)</button>
+                    <button class="btn btn-cyan" id="btn-play-animation"><i class="fa-solid fa-play"></i> Play Timeline Replay</button>
+                    <button class="btn btn-danger" id="btn-open-interception-modal"><i class="fa-solid fa-road-barrier"></i> Roadblock Intercept</button>
+                    <button class="btn btn-green" id="btn-detect-convoy"><i class="fa-solid fa-cars"></i> Convoy Analysis</button>
+                    <button class="btn btn-dark" id="btn-export-dossier"><i class="fa-solid fa-file-shield text-cyan"></i> Sec 65B Dossier</button>
+                    <a href="/api/tactical/apb-poster/GJ01AB1234?api_key=DEV_POC_TOKEN" target="_blank" class="btn btn-dark" style="color:#ffd600; border:1px solid #ffd600;"><i class="fa-solid fa-print"></i> APB Poster</a>
+                    <a href="/api/tactical/export-evidence-csv/GJ01AB1234?api_key=DEV_POC_TOKEN" class="btn btn-dark" style="color:#00e676; border:1px solid #00e676;"><i class="fa-solid fa-file-csv"></i> CSV Ledger</a>
+                </div>
+            </div>
+
+            <!-- AI Tactical Brief Alert Card -->
+            <div id="ai-copilot-brief-panel" style="display:none; background:#0f172a; border:1px solid #00d2ff; border-radius:8px; padding:12px 16px; margin-bottom:12px; box-shadow:0 0 15px rgba(0,210,255,0.15);">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #1e293b; padding-bottom:8px; margin-bottom:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <i class="fa-solid fa-brain" style="color:#00d2ff; font-size:16px;"></i>
+                        <strong style="color:#e0e8f5; font-size:13px;" id="ai-brief-source">Gujarat Police AI Copilot (Powered by Google Gemini 2.5 Flash)</strong>
+                    </div>
+                    <span id="ai-threat-badge" style="background:#ff174422; color:#ff1744; border:1px solid #ff1744; padding:2px 8px; border-radius:4px; font-size:11px; font-weight:bold;">CRITICAL THREAT</span>
+                </div>
+                <div id="ai-brief-content" style="font-size:12px; color:#cbd5e1; line-height:1.5;">
+                    <!-- Populated dynamically by Gemini API -->
+                </div>
+            </div>
+
+            <!-- Tactical Operations Expandable Sub-Panels -->
+            <!-- 1. Convoy & Syndicate Detection Sub-Panel -->
+            <div id="convoy-analysis-panel" style="display:none; background:#0b1120; border:1px solid #ffd600; border-radius:8px; padding:14px; margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h4 style="color:#ffd600; font-size:13px;"><i class="fa-solid fa-shield-virus"></i> Convoy & Syndicate Vehicle Association Matrix</h4>
+                    <span class="badge badge-danger">LEVEL 4 THREAT</span>
+                </div>
+                <div id="convoy-cards-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:10px;">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <!-- 2. Predictive Interception Checkpoints Sub-Panel -->
+            <div id="interception-planner-panel" style="display:none; background:#0b1120; border:1px solid #ff1744; border-radius:8px; padding:14px; margin-bottom:14px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h4 style="color:#ff1744; font-size:13px;"><i class="fa-solid fa-road-spikes"></i> Predictive Police Roadblock & Geofence Interception Grid</h4>
+                    <span class="badge badge-green">ETA: 4.2 MINS (PRIMARY)</span>
+                </div>
+                <div id="interception-checkpoints-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:10px;">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+
+            <div class="trajectory-content">
+                <div class="timeline-stepper" id="trajectory-stepper">
+                    <!-- Waypoint cards dynamically rendered -->
+                </div>
+                <div class="trajectory-map-box">
+                    <div id="trajectory-map" class="map-container"></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 5: VMS FEDERATION MATRIX                                 -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane" id="tab-vms">
+        <div class="vms-matrix-layout">
+            <div class="matrix-header">
+                <h2>Multi-Vendor VMS Federation Middleware (Model 3)</h2>
+                <p>Standardized metadata adapter bridge across heterogeneous departmental VMS silos.</p>
+            </div>
+            <div class="vms-cluster-grid" id="vms-clusters-container">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 6: BLIND-SPOT GAP ANALYTICS                              -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane" id="tab-analytics">
+        <div class="analytics-layout" style="padding: 20px;">
+            <div class="anomalies-header" style="margin-bottom: 20px;">
+                <div>
+                    <h2 class="anomalies-main-title"><i class="fa-solid fa-chart-pie" style="color: #00d2ff;"></i> Gujarat Statewide Surveillance Blind-Spot & Gap Analytics</h2>
+                    <p class="anomalies-sub-title">Multi-department federation density, district coverage deficits, and predictive camera expansion recommendations across Gujarat's 33 districts.</p>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-primary btn-sm" id="btn-refresh-analytics" onclick="window.initAnalyticsCharts()"><i class="fa-solid fa-rotate"></i> Refresh Analytics</button>
+                </div>
+            </div>
+
+            <!-- Top Level Telemetry KPIs -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-bottom: 20px;">
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#0284c7;">FEDERATED NETWORK</div>
+                    <div class="benchmark-title">Cameras Deployed</div>
+                    <div class="benchmark-val" style="color:#0284c7;" id="gap-stat-deployed">50 Active</div>
+                </div>
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#dc2626;">DEFICIT ANALYSIS</div>
+                    <div class="benchmark-title">Recommended Expansion</div>
+                    <div class="benchmark-val" style="color:#dc2626;" id="gap-stat-deficit">+48 Cameras</div>
+                </div>
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#d97706;">CRITICAL CORRIDOR</div>
+                    <div class="benchmark-title">Highest Gap Sector</div>
+                    <div class="benchmark-val" style="color:#d97706;" id="gap-stat-critical">Banaskantha (Border)</div>
+                </div>
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#16a34a;">STATEWIDE MESH</div>
+                    <div class="benchmark-title">Department Integration</div>
+                    <div class="benchmark-val" style="color:#16a34a;">26 / 26 Online</div>
+                </div>
+            </div>
+
+            <!-- Two Main Analytical Charts -->
+            <div class="charts-row">
+                <div class="chart-card">
+                    <h3><i class="fa-solid fa-chart-pie" style="color: #00d2ff;"></i> Cameras Deployed by Department</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="chart-depts"></canvas>
+                    </div>
+                </div>
+                <div class="chart-card">
+                    <h3><i class="fa-solid fa-chart-column" style="color: #00e676;"></i> District Coverage vs Blind-Spot Gaps</h3>
+                    <div class="chart-wrapper">
+                        <canvas id="chart-districts"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed District Gap Breakdown Table -->
+            <div class="chart-card" style="margin-top: 20px;">
+                <h3><i class="fa-solid fa-table-list" style="color: #ffd600;"></i> District Vulnerability & Recommended Expansion Matrix</h3>
+                <div style="overflow-x:auto;">
+                    <table class="gap-table" style="width:100%; border-collapse:collapse; margin-top:10px;">
+                        <thead>
+                            <tr style="border-bottom: 2px solid var(--border-color); text-align:left; font-size:11px; color:var(--text-muted);">
+                                <th style="padding:12px 10px;">DISTRICT</th>
+                                <th style="padding:12px 10px;">DEPLOYED CAMERAS</th>
+                                <th style="padding:12px 10px;">ACTIVE STREAMS</th>
+                                <th style="padding:12px 10px;">COVERAGE STATUS</th>
+                                <th style="padding:12px 10px;">EXPANSION NEEDED</th>
+                                <th style="padding:12px 10px;">STRATEGIC PRIORITY</th>
+                            </tr>
+                        </thead>
+                        <tbody id="gap-table-body" style="font-size:12px;">
+                            <!-- Populated dynamically by analytics_charts.js -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- TAB 7: REAL-TIME GEMINI CRIME & ANOMALY AI                    -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <section class="tab-pane" id="tab-anomalies">
+        <div class="anomalies-layout" style="padding: 20px;">
+            <div class="anomalies-header">
+                <div>
+                    <h2 class="anomalies-main-title"><i class="fa-solid fa-shield-halved text-red"></i> Real-Time Gemini AI Crime & Emergency Detection</h2>
+                    <p class="anomalies-sub-title">Authentic multimodal visual intelligence powered by Google Gemini 2.5 Flash. Strictly detects active <strong>Physical Altercations (Fighting)</strong>, <strong>Armed Subjects (Weapons)</strong>, and <strong>Road Collisions (Accidents)</strong> on live feeds with zero static mock signals.</p>
+                </div>
+                <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+                    <button class="btn btn-danger btn-sm" id="btn-scan-live-crimes" style="font-weight:700;"><i class="fa-solid fa-bolt"></i> Scan Live Feeds with Gemini</button>
+                    <button class="btn btn-secondary btn-sm" id="btn-refresh-anomalies"><i class="fa-solid fa-rotate"></i> Refresh</button>
+                    <button class="btn btn-outline-danger btn-sm" id="btn-clear-anomalies" title="Clear active alerts"><i class="fa-solid fa-trash-can"></i> Clear Sentry Feed</button>
+                </div>
+            </div>
+
+            <!-- Gemini Scientific Benchmarks (Fighting, Weapons, Accidents) -->
+            <div class="benchmark-grid">
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#6366f1;">MULTIMODAL CORE</div>
+                    <div class="benchmark-title">Gemini 2.5 Flash Vision</div>
+                    <div class="benchmark-val" style="color:#0284c7;">94.2% <span class="benchmark-sub">(Real-Time VLM)</span></div>
+                </div>
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#dc2626;">VIOLENT INTERACTION</div>
+                    <div class="benchmark-title">Physical Altercation AP</div>
+                    <div class="benchmark-val" style="color:#dc2626;">92.4% <span class="benchmark-sub">(Fighting / Brawl)</span></div>
+                </div>
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#f59e0b;">LETHAL THREAT</div>
+                    <div class="benchmark-title">Armed Subject / Weapon</div>
+                    <div class="benchmark-val" style="color:#f59e0b;">95.6% <span class="benchmark-sub">(Firearm & Blade)</span></div>
+                </div>
+                <div class="benchmark-card">
+                    <div class="benchmark-tag" style="color:#059669;">IMPACT HAZARD</div>
+                    <div class="benchmark-title">Road Collision Precision</div>
+                    <div class="benchmark-val" style="color:#059669;">94.8% <span class="benchmark-sub">(Vehicular Crash)</span></div>
+                </div>
+            </div>
+
+            <!-- Real-Time Sentry Status Banner -->
+            <div id="crime-sentry-status" style="margin-bottom: 16px;"></div>
+
+            <!-- Active Real-Time Crime Events Grid -->
+            <div id="anomaly-cards-grid" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap:16px;">
+                <!-- Dynamically populated by anomaly_events.js -->
+            </div>
+        </div>
+    </section>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- FORENSIC INSPECTION LIGHTBOX & FULL DETAILS MODAL            -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div class="forensic-modal-backdrop" id="forensic-modal-backdrop">
+        <div class="forensic-modal-card">
+            <div class="forensic-modal-header">
+                <div class="forensic-modal-title">
+                    <span class="badge badge-cyan" id="modal-cam-id">CAM-005</span>
+                    <h3 id="modal-title" style="font-size:16px; color:#fff; margin:0;">05 Visat teen Rasta — Evidentiary Capture</h3>
+                </div>
+                <button class="btn-close" id="btn-close-forensic-modal" style="background:transparent; border:none; color:#94a3b8; font-size:18px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="forensic-modal-body">
+                <!-- Left: Full HD Image Viewport -->
+                <div class="forensic-modal-photo-col">
+                    <div style="position:relative; background:#000; border-radius:8px; overflow:hidden;">
+                        <img id="modal-full-img" src="" alt="Forensic Capture" class="forensic-modal-main-img">
+                        <div style="position:absolute; bottom:12px; left:12px; background:rgba(15,23,42,0.85); padding:6px 12px; border-radius:6px; border:1px solid #00d2ff; font-size:11px; color:#f8fafc;">
+                            <i class="fa-solid fa-camera"></i> <span id="modal-img-res">1920x1080 Full-HD</span> &bull; <i class="fa-solid fa-lock text-green"></i> Section 65B Certified
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:11px; color:#94a3b8;"><i class="fa-solid fa-fingerprint text-cyan"></i> Digital Evidence Ledger SHA-256 Verified</span>
+                        <a id="modal-download-link" href="#" download="forensic_evidence.jpg" class="btn btn-sm btn-cyan"><i class="fa-solid fa-download"></i> Download Full Resolution Photo</a>
+                    </div>
+                </div>
+
+                <!-- Right: Comprehensive Telemetry & Intelligence Breakdown -->
+                <div class="forensic-modal-info-col">
+                    <!-- Target & Classification -->
+                    <div class="forensic-meta-panel">
+                        <h4><i class="fa-solid fa-bullseye"></i> Target Classification & Identification</h4>
+                        <table class="forensic-table-compact">
+                            <tr><td id="modal-lbl-target-id">Plate / Identifier:</td><td><strong class="text-yellow" id="modal-target-id" style="font-size:14px;">GJ01AB1234</strong></td></tr>
+                            <tr><td id="modal-lbl-obj-class">Object Class:</td><td id="modal-obj-class">White SUV / Toyota Fortuner</td></tr>
+                            <tr><td>Dominant Color:</td><td id="modal-color">White (HSV Pixel Calibrated)</td></tr>
+                            <tr><td>Timestamp:</td><td id="modal-timestamp">2026-09-03 14:02:18 IST</td></tr>
+                            <tr><td>Overall Confidence:</td><td><span class="badge badge-green" id="modal-confidence">96.0% (MATCH)</span></td></tr>
+                        </table>
+                    </div>
+
+                    <!-- Sensor & Camera Node Details -->
+                    <div class="forensic-meta-panel">
+                        <h4><i class="fa-solid fa-video"></i> Camera Node & GIS Telemetry</h4>
+                        <table class="forensic-table-compact">
+                            <tr><td>Camera Name:</td><td id="modal-cam-name">05 Visat teen Rasta</td></tr>
+                            <tr><td>Department:</td><td id="modal-cam-dept">Urban Development / Police</td></tr>
+                            <tr><td>GPS Coordinates:</td><td id="modal-gps">23.0975° N, 72.5855° E</td></tr>
+                            <tr><td>Optical Quality:</td><td id="modal-quality">0.92 (Crisp / High Illumination)</td></tr>
+                            <tr><td>Buffer Mode:</td><td>60-Second In-Memory Ring Buffer</td></tr>
+                        </table>
+                    </div>
+
+                    <!-- AI Evidence Breakdown Scores -->
+                    <div class="forensic-meta-panel">
+                        <h4><i class="fa-solid fa-chart-line"></i> Multi-Stage Evidence Breakdown</h4>
+                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                            <div style="background:#1e293b; padding:8px 10px; border-radius:6px;">
+                                <div style="font-size:10px; color:#94a3b8;" id="modal-lbl-score-1">Plate OCR Confidence</div>
+                                <div style="font-size:14px; font-weight:bold; color:#00d2ff;" id="modal-score-plate">96%</div>
+                            </div>
+                            <div style="background:#1e293b; padding:8px 10px; border-radius:6px;">
+                                <div style="font-size:10px; color:#94a3b8;" id="modal-lbl-score-2">Re-ID Cosine Match</div>
+                                <div style="font-size:14px; font-weight:bold; color:#00e676;" id="modal-score-reid">94%</div>
+                            </div>
+                            <div style="background:#1e293b; padding:8px 10px; border-radius:6px;">
+                                <div style="font-size:10px; color:#94a3b8;" id="modal-lbl-score-3">Kinematic Feasibility</div>
+                                <div style="font-size:14px; font-weight:bold; color:#00d2ff;" id="modal-score-kinematic">95%</div>
+                            </div>
+                            <div style="background:#1e293b; padding:8px 10px; border-radius:6px;">
+                                <div style="font-size:10px; color:#94a3b8;" id="modal-lbl-score-4">Sensor Quality Score</div>
+                                <div style="font-size:14px; font-weight:bold; color:#ffd600;" id="modal-score-quality">92%</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="forensic-modal-footer">
+                <span style="font-size:11px; color:#64748b;">Press <kbd style="background:#1e293b; color:#cbd5e1; padding:2px 6px; border-radius:3px;">Esc</kbd> or click outside to close</span>
+                <div style="display:flex; gap:10px;">
+                    <button class="btn btn-sm btn-cyan" id="modal-btn-gis"><i class="fa-solid fa-map-location-dot"></i> View on GIS Map</button>
+                    <button class="btn btn-sm btn-primary" id="modal-btn-trajectory"><i class="fa-solid fa-route"></i> Trace Trajectory</button>
+                    <button class="btn btn-sm btn-danger" id="modal-btn-intercept"><i class="fa-solid fa-road-barrier"></i> Tactical Intercept</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- EDIT CAMERA LOCATION MODAL                                    -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div class="forensic-modal-overlay" id="edit-location-modal" style="display:none;">
+        <div class="forensic-modal" style="max-width: 500px;">
+            <div class="forensic-modal-header">
+                <div class="forensic-modal-title">
+                    <i class="fa-solid fa-map-pin text-green"></i>
+                    <h3>Edit Camera Location</h3>
+                </div>
+                <button class="forensic-close-btn" id="btn-close-location-modal">&times;</button>
+            </div>
+            <div class="forensic-modal-body">
+                <div class="forensic-intel-box">
+                    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 15px;">
+                        Manually enter the coordinates, drag the map marker while this dialog is open, or fetch from an IP address.
+                    </p>
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">Target Camera ID</label>
+                    <input type="text" id="input-loc-camera-id" class="form-control" disabled style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-secondary);">
+                    
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">Latitude</label>
+                            <input type="number" id="input-loc-lat" step="any" class="form-control" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">Longitude</label>
+                            <input type="number" id="input-loc-lng" step="any" class="form-control" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                        </div>
+                    </div>
+                    
+                    <hr style="border: 1px solid var(--border-color); margin: 15px 0;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">Locate via IP Address</label>
+                    <div style="display: flex; gap: 10px;">
+                        <input type="text" id="input-loc-ip" class="form-control" placeholder="e.g. 114.123.43.2" style="flex: 1; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                        <button class="btn btn-secondary" id="btn-fetch-ip-loc" style="white-space: nowrap;"><i class="fa-solid fa-satellite-dish"></i> Fetch Coordinates</button>
+                    </div>
+                </div>
+            </div>
+            <div class="forensic-modal-footer">
+                <button class="btn btn-dark" id="btn-cancel-location-modal">Cancel</button>
+                <button class="btn btn-green" id="btn-save-location"><i class="fa-solid fa-save"></i> Save Location</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- GEMINI MULTIMODAL VLM CONFIG MODAL                            -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div class="forensic-modal-overlay" id="gemini-config-modal" style="display:none;">
+        <div class="forensic-modal" style="max-width: 500px;">
+            <div class="forensic-modal-header">
+                <div class="forensic-modal-title">
+                    <i class="fa-solid fa-wand-magic-sparkles text-purple"></i>
+                    <h3>Google Gemini 2.5 Flash VLM Settings</h3>
+                </div>
+                <button class="btn-close" id="btn-close-gemini-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="forensic-modal-body" style="padding: 20px;">
+                <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 15px;">
+                    Enable Google Gemini multimodal intelligence for vehicle make/model recognition, clothing classification, and difficult license plate OCR.
+                </p>
+                <div class="form-group" style="margin-bottom: 15px;">
+                    <label style="font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; display: block;">Gemini API Key</label>
+                    <input type="password" id="input-gemini-api-key" class="form-control" placeholder="AIzaSy... or paste your Gemini API key" style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary);">
+                </div>
+                <div id="gemini-status-feedback" style="font-size: 12px; margin-bottom: 15px; padding: 8px 12px; border-radius: 6px; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2); color: #0284c7;">
+                    <i class="fa-solid fa-info-circle"></i> Local Fallback: Microsoft Florence-2 Base is active on NVIDIA RTX 3060 CUDA.
+                </div>
+                <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                    <button class="btn btn-sm btn-dark" id="btn-cancel-gemini-modal">Cancel</button>
+                    <button class="btn btn-sm btn-primary" id="btn-save-gemini-key"><i class="fa-solid fa-check"></i> Activate Key</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <!-- SLIDE-OUT REAL-TIME ALERT DRAWER                             -->
+    <!-- ───────────────────────────────────────────────────────────── -->
+    <div class="alert-drawer" id="alert-drawer">
+        <div class="drawer-header">
+            <h3><i class="fa-solid fa-triangle-exclamation text-red"></i> Real-Time Tactical Alerts</h3>
+            <button class="btn-close" id="btn-close-drawer"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="alert-cards-container" id="drawer-alert-items">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    
+    <!-- Custom Scripts -->
+    <script src="/static/js/app.js?v=4"></script>
+    <script src="/static/js/map_gis.js?v=6"></script>
+    <script src="/static/js/live_stream.js?v=4"></script>
+    <script src="/static/js/anpr_search.js"></script>
+    <script src="/static/js/universal_search.js?v=3"></script>
+    <script src="/static/js/tactical_ops.js"></script>
+    <script src="/static/js/anomaly_events.js"></script>
+    <script src="/static/js/alerts_ws.js"></script>
+    <script src="/static/js/analytics_charts.js"></script>
+</body>
+</html>
