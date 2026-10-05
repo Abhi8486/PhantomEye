@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  mediamtx-transcoder:
+    image: bluenviron/mediamtx:latest-ffmpeg
+    container_name: phantomeye_webrtc_transcoder
+    network_mode: host
+    environment:
+      # MediaMTX Environment Variables
+      - MTX_WEBRTC=yes
+      - MTX_WEBRTCADDRESS=:8889
+      - MTX_RTSP=yes
+      
+      # Dynamic path matching. 
+      # When you request WebRTC for /stream/CAM-003, MediaMTX will execute FFmpeg to transcode it.
+      # We pull the source H.265 stream from your main IP and transcode it to H.264 (libx264)
+      - MTX_PATHS_ALL_RUNONREAD=ffmpeg -rtsp_transport tcp -i rtsp://rathodabhishek3726%40gmail.com:PR8P-78XG-ETKT@103.250.160.189/stream/$$MTX_PATH -c:v libx264 -preset ultrafast -tune zerolatency -b:v 1500k -c:a aac -f rtsp rtsp://localhost:8554/$$MTX_PATH
+      - MTX_PATHS_ALL_RUNONREADRESTART=yes
+    restart: unless-stopped
