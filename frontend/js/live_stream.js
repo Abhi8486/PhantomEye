@@ -235,8 +235,17 @@ window.switchLiveCamera = async function (cameraId) {
             container.appendChild(videoEl);
         }
 
+        // Extract the actual path (e.g. "stream/cam01") from the RTSP URI to match the remote server exactly
+        let actualPath = cameraId;
+        if (data.stream_uri) {
+            try {
+                const urlObj = new URL(data.stream_uri);
+                actualPath = urlObj.pathname.replace(/^\/+/, ''); // e.g. "stream/cam01"
+            } catch(e) {}
+        }
+
         // Pointing to local Docker MediaMTX Transcoder
-        const webrtcEndpoint = `http://127.0.0.1:8889/${cameraId}/whep`;
+        const webrtcEndpoint = `http://127.0.0.1:8889/${actualPath}/whep`;
 
         try {
             await startWHEP(videoEl, webrtcEndpoint);
