@@ -235,9 +235,8 @@ window.switchLiveCamera = async function (cameraId) {
             container.appendChild(videoEl);
         }
 
-        // WebRTC Endpoint URL provided by the user
-        // Modify this URL to point to your actual WebRTC/WHEP signaling server
-        const webrtcEndpoint = `http://rathodabhishek3726%40gmail.com:PR8P-78XG-ETKT@103.250.160.189:8889/stream/${cameraId}/whep`;
+        // Pointing to local Docker MediaMTX Transcoder
+        const webrtcEndpoint = `http://127.0.0.1:8889/${cameraId}/whep`;
 
         try {
             await startWHEP(videoEl, webrtcEndpoint);
