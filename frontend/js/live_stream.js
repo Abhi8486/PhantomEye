@@ -209,10 +209,13 @@ window.switchLiveCamera = async function (cameraId) {
         let container = document.getElementById("stream-display-box");
         let videoEl = document.getElementById("live-stream-video");
 
-        // Ensure we have an <img> element instead of a <video> for MJPEG
-        if (videoEl && videoEl.tagName.toLowerCase() === "video") {
-            let newVideoEl = document.createElement("img");
+        // Ensure we have a <video> element instead of an <img> for WebRTC
+        if (videoEl && videoEl.tagName.toLowerCase() === "img") {
+            let newVideoEl = document.createElement("video");
             newVideoEl.id = "live-stream-video";
+            newVideoEl.autoplay = true;
+            newVideoEl.playsInline = true;
+            newVideoEl.muted = true;
             newVideoEl.style.width = "100%";
             newVideoEl.style.height = "100%";
             newVideoEl.style.objectFit = "contain";
@@ -220,8 +223,11 @@ window.switchLiveCamera = async function (cameraId) {
             container.replaceChild(newVideoEl, videoEl);
             videoEl = newVideoEl;
         } else if (!videoEl) {
-            videoEl = document.createElement("img");
+            videoEl = document.createElement("video");
             videoEl.id = "live-stream-video";
+            videoEl.autoplay = true;
+            videoEl.playsInline = true;
+            videoEl.muted = true;
             videoEl.style.width = "100%";
             videoEl.style.height = "100%";
             videoEl.style.objectFit = "contain";
@@ -229,8 +235,16 @@ window.switchLiveCamera = async function (cameraId) {
             container.appendChild(videoEl);
         }
 
-        // Point directly to the Colab Backend MJPEG feed (automatically transcodes H.265 to JPEG)
-        videoEl.src = `/api/video/feed/${cameraId}?t=${Date.now()}`;
+        // WebRTC Endpoint URL provided by the user
+        // Modify this URL to point to your actual WebRTC/WHEP signaling server
+        const webrtcEndpoint = `http://rathodabhishek3726%40gmail.com:PR8P-78XG-ETKT@103.250.160.189:8889/stream/${cameraId}/whep`;
+
+        try {
+            await startWHEP(videoEl, webrtcEndpoint);
+        } catch (err) {
+            console.error("Failed to connect WebRTC stream:", err);
+            // Fallback UI or logic can go here
+        }
 
         // Refresh camera list in GIS tab if loaded so active badge reflects immediately
         if (window.allCameras && window.allCameras.length) {
@@ -392,7 +406,6 @@ async function startWHEP(videoElement, whepUrl) {
     peerConnection.ontrack = (event) => {
         if (videoElement.srcObject !== event.streams[0]) {
             videoElement.srcObject = event.streams[0];
-            videoElement.play().catch(e => console.warn("Video play failed:", e));
         }
     };
 
