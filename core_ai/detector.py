@@ -10,15 +10,26 @@ from ultralytics import YOLO
 
 
 class RealTimeDetector:
-    def __init__(self, model_name="yolo26s.pt", conf_thresh=0.25, iou_thresh=0.45):
+    def __init__(self, model_name="yolov8m.engine", fallback_model="yolov8m.pt", conf_thresh=0.25, iou_thresh=0.45):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        print(f"[*] Initializing YOLO26 Detector on {self.device.upper()} ({model_name})...")
-        self.model = YOLO(model_name)
+        
+        import os
+        # Prioritize high-performance TensorRT engine if available and running on CUDA
+        if os.path.exists(model_name) and self.device == "cuda":
+            print(f"[*] Initializing High-Performance TensorRT Detector on {self.device.upper()} ({model_name})...")
+            self.model = YOLO(model_name, task='detect')
+            print(f"[OK] TensorRT Detector ({model_name}) Ready!")
+        else:
+            print(f"[*] Initializing Standard PyTorch Detector on {self.device.upper()} ({fallback_model})...")
+            self.model = YOLO(fallback_model)
+            print(f"[OK] YOLO Detector ({fallback_model}) Ready on {self.device.upper()}!")
+            if self.device == "cuda":
+                print(f"[TIP] To double your FPS, export to TensorRT by running: yolo export model={fallback_model} format=engine half=True")
+
         self.conf_thresh = conf_thresh
         self.iou_thresh = iou_thresh
         self.threat_classes = {"knife", "scissors", "gun", "dagger", "sword", "baseball bat"}
         self.vehicle_classes = {"car", "motorcycle", "bus", "truck"}
-        print(f"[OK] YOLO26 Detector ({model_name}) Ready on {self.device.upper()}!")
 
     @staticmethod
     def is_auto_rickshaw(frame_bgr, box):
