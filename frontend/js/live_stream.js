@@ -209,25 +209,19 @@ window.switchLiveCamera = async function (cameraId) {
         let container = document.getElementById("stream-display-box");
         let videoEl = document.getElementById("live-stream-video");
 
-        // Ensure we have a <video> element instead of an <img> for WebRTC
-        if (videoEl && videoEl.tagName.toLowerCase() === "img") {
-            let newVideoEl = document.createElement("video");
-            newVideoEl.id = "live-stream-video";
-            newVideoEl.autoplay = true;
-            newVideoEl.playsInline = true;
-            newVideoEl.muted = true;
-            newVideoEl.style.width = "100%";
-            newVideoEl.style.height = "100%";
-            newVideoEl.style.objectFit = "contain";
-            newVideoEl.style.background = "#000";
-            container.replaceChild(newVideoEl, videoEl);
-            videoEl = newVideoEl;
+        // Ensure we have an <img> element for MJPEG instead of a <video> for WebRTC
+        if (videoEl && videoEl.tagName.toLowerCase() === "video") {
+            let newImgEl = document.createElement("img");
+            newImgEl.id = "live-stream-video"; // Keeping the same ID so CSS rules still apply
+            newImgEl.style.width = "100%";
+            newImgEl.style.height = "100%";
+            newImgEl.style.objectFit = "contain";
+            newImgEl.style.background = "#000";
+            container.replaceChild(newImgEl, videoEl);
+            videoEl = newImgEl;
         } else if (!videoEl) {
-            videoEl = document.createElement("video");
+            videoEl = document.createElement("img");
             videoEl.id = "live-stream-video";
-            videoEl.autoplay = true;
-            videoEl.playsInline = true;
-            videoEl.muted = true;
             videoEl.style.width = "100%";
             videoEl.style.height = "100%";
             videoEl.style.objectFit = "contain";
@@ -235,24 +229,8 @@ window.switchLiveCamera = async function (cameraId) {
             container.appendChild(videoEl);
         }
 
-        // Extract the actual path (e.g. "stream/cam01") from the RTSP URI to match the remote server exactly
-        let actualPath = cameraId;
-        if (data.stream_uri) {
-            try {
-                const urlObj = new URL(data.stream_uri);
-                actualPath = urlObj.pathname.replace(/^\/+/, ''); // e.g. "stream/cam01"
-            } catch(e) {}
-        }
-
-        // Pointing to local Docker MediaMTX Transcoder
-        const webrtcEndpoint = `http://127.0.0.1:8889/${actualPath}/whep`;
-
-        try {
-            await startWHEP(videoEl, webrtcEndpoint);
-        } catch (err) {
-            console.error("Failed to connect WebRTC stream:", err);
-            // Fallback UI or logic can go here
-        }
+        // Set the source to the backend MJPEG stream
+        videoEl.src = `/api/video/feed/${cameraId}`;
 
         // Refresh camera list in GIS tab if loaded so active badge reflects immediately
         if (window.allCameras && window.allCameras.length) {
