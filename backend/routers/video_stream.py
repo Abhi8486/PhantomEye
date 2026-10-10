@@ -174,6 +174,13 @@ class LiveCameraProcessor:
             return TEST_VIDEO_PATH, TEST_VIDEO_PATH
 
         fallback_path = find_recorded_stream(self.cam_num)
+        
+        # --- USER OVERRIDE FOR CCTV HLS/RTSP FEEDS ---
+        # If camera_id is exactly CAM-04, use the provided HLS feed which bypasses HEVC decoding issues
+        if camera_id == "CAM-04" or camera_id == "CAM-004":
+            print(f"[VideoStream] Forcing HLS override for {camera_id}")
+            return "https://cctv.corp8.cloud/cam04/index.m3u8", fallback_path
+
         try:
             from ..database.schema import get_db_connection
             conn = get_db_connection()
@@ -192,6 +199,8 @@ class LiveCameraProcessor:
                 return url, fallback_path
         except Exception:
             pass
+        
+        # Ultimate fallback for local testing
         return f"rtsp://mock-camera-stream/{camera_id}", fallback_path
 
     def _worker(self):
